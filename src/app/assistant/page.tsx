@@ -1,29 +1,17 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Bot, Send, Sparkles, MessageSquare, FileText, Phone, Mail, Calendar, CheckCircle, User, Loader2, RefreshCw, AlertTriangle, Zap, Trash2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
+import { Bot, Send, User, Sparkles, X, AlertCircle } from 'lucide-react';
 import { useLanguage } from '@/lib/language-context';
+import { mockCustomers } from '@/data/mock-customers';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  action?: string;
-}
-
-interface QuickAction {
-  id: string;
-  labelVi: string;
-  labelEn: string;
-  icon: any;
-  descriptionVi: string;
-  descriptionEn: string;
-  action: string;
+  intent?: string;
+  detectedCustomer?: { id: string; name: string };
 }
 
 function generateId(): string {
@@ -33,60 +21,47 @@ function generateId(): string {
 export default function AssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState('cus_001');
   const [loading, setLoading] = useState(false);
-  const [aiMode, setAIMode] = useState<'mock' | 'openai'>('openai');
+  const [detectedCustomer, setDetectedCustomer] = useState<{ id: string; name: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { language, t } = useLanguage();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { language } = useLanguage();
 
-  const customers = [
-    { id: 'cus_001', name: 'Nguyen Van A - Personal' },
-    { id: 'cus_002', name: 'Tran Thi B - Retail' },
-    { id: 'cus_010', name: 'Bui Thi K - Wealth' },
-    { id: 'cus_012', name: 'Blue Ocean Logistics - SME' },
-    { id: 'cus_013', name: 'Minh An Retail' },
-    { id: 'cus_014', name: 'Lotus Food Service' },
-  ];
-
-  const quickActions: QuickAction[] = [
-    { id: 'summarize_customer', labelVi: 'Tóm tắt KH', labelEn: 'Customer Brief', icon: MessageSquare, descriptionVi: 'Xem thông tin tổng quan', descriptionEn: 'View customer overview', action: 'summarize_customer' },
-    { id: 'suggest_next_best_action', labelVi: 'Hành động', labelEn: 'Next Action', icon: Sparkles, descriptionVi: 'Gợi ý hành động tiếp theo', descriptionEn: 'Suggest next action', action: 'suggest_next_best_action' },
-    { id: 'suggest_next_best_offer', labelVi: 'Sản phẩm', labelEn: 'Products', icon: FileText, descriptionVi: 'Gợi ý sản phẩm phù hợp', descriptionEn: 'Suggest products', action: 'suggest_next_best_offer' },
-    { id: 'generate_call_script', labelVi: 'Kịch bản gọi', labelEn: 'Call Script', icon: Phone, descriptionVi: 'Tạo kịch bản gọi điện', descriptionEn: 'Generate call script', action: 'generate_call_script' },
-    { id: 'generate_email_script', labelVi: 'Mẫu email', labelEn: 'Email Template', icon: Mail, descriptionVi: 'Tạo mẫu email', descriptionEn: 'Generate email', action: 'generate_email_script' },
-    { id: 'explain_credit_risk', labelVi: 'Phân tích rủi ro', labelEn: 'Risk Analysis', icon: AlertTriangle, descriptionVi: 'Đánh giá rủi ro tín dụng', descriptionEn: 'Assess credit risk', action: 'explain_credit_risk' },
-    { id: 'explain_churn_risk', labelVi: 'Churn Risk', labelEn: 'Churn Risk', icon: User, descriptionVi: 'Đánh giá khả năng mất KH', descriptionEn: 'Assess churn probability', action: 'explain_churn_risk' },
-    { id: 'create_follow_up_task', labelVi: 'Tạo Task', labelEn: 'Create Task', icon: CheckCircle, descriptionVi: 'Tạo công việc theo dõi', descriptionEn: 'Create follow-up task', action: 'create_follow_up_task' },
-  ];
+  const isVietnamese = language === 'vi';
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem('crm_settings');
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      if (parsed.aiMode) setAIMode(parsed.aiMode);
-    }
-    
-    const welcomeMsg = language === 'vi' 
-      ? `Xin chào! Tôi là AI Assistant của OceanBank CRM. 
+    const welcomeMsg = isVietnamese
+      ? `Xin chào! 👋
 
-Tôi có thể giúp bạn:
-• Tóm tắt thông tin khách hàng
-• Gợi ý sản phẩm và hành động tiếp theo
-• Tạo kịch bản gọi điện hoặc email
-• Phân tích rủi ro và khả năng churn
-• Tạo công việc theo dõi
+Tôi là **RM Copilot** - Trợ lý AI của OceanBank.
 
-**Chọn một khách hàng** và nhắn tin hoặc sử dụng **Quick Actions** để bắt đầu!`
-      : `Hello! I'm the OceanBank CRM AI Assistant.
+Bạn chỉ cần nhắn tin hỏi về khách hàng, tôi sẽ tự nhận diện!
 
-I can help you with:
-• Summarize customer information
-• Suggest products and next actions
-• Generate call or email scripts
-• Analyze risks and churn probability
-• Create follow-up tasks
+Ví dụ:
+• "Tóm tắt khách hàng Tran Thi B"
+• "Phân tích rủi ro Bui Thi K"
+• "Gợi ý sản phẩm cho Blue Ocean Logistics"
 
-**Select a customer** and start chatting or use **Quick Actions** to begin!`;
+Hoặc hỏi chung:
+• "Tóm tắt khách hàng này"
+• "Gợi ý hành động tiếp theo"
+• "Tạo kịch bản gọi"`
+
+      : `Hello! 👋
+
+I'm **RM Copilot** - OceanBank's AI assistant.
+
+Just chat about customers, I'll automatically detect!
+
+Examples:
+• "Summarize customer Tran Thi B"
+• "Analyze risk for Bui Thi K"
+• "Suggest products for Blue Ocean Logistics"
+
+Or ask generally:
+• "Summarize this customer"
+• "Suggest next action"
+• "Generate call script"`;
 
     setMessages([{
       id: '1',
@@ -120,7 +95,6 @@ I can help you with:
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId: selectedCustomer,
           action: 'chat',
           payload: { query: currentInput, language },
         }),
@@ -128,77 +102,53 @@ I can help you with:
 
       const data = await response.json();
 
+      if (data.error && !data.detectedCustomer && !detectedCustomer) {
+        // No customer detected - ask user
+        setMessages(prev => [...prev, {
+          id: generateId(),
+          role: 'assistant',
+          content: isVietnamese
+            ? `Tôi chưa nhận diện được khách hàng. Bạn vui lòng nhập tên khách hàng cụ thể nhé!\n\nVí dụ: "Tóm tắt khách hàng Tran Thi B"`
+            : `I couldn't detect a customer. Please mention a specific customer name!\n\nExample: "Summarize customer Tran Thi B"`,
+          timestamp: new Date(),
+        }]);
+        setLoading(false);
+        return;
+      }
+
       const assistantMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: data.message || (language === 'vi' ? 'Xin lỗi, tôi không thể xử lý yêu cầu này.' : 'Sorry, I cannot process this request.'),
+        content: data.message || (isVietnamese ? 'Xin lỗi, tôi không thể xử lý.' : 'Sorry, I cannot process this.'),
         timestamp: new Date(),
+        intent: data.intent,
+        detectedCustomer: data.detectedCustomer,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      if (data.detectedCustomer) {
+        setDetectedCustomer(data.detectedCustomer);
+      }
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
         id: generateId(),
         role: 'assistant',
-        content: language === 'vi' ? 'Đã xảy ra lỗi kết nối. Vui lòng thử lại.' : 'Connection error. Please try again.',
+        content: isVietnamese ? 'Đã xảy ra lỗi. Vui lòng thử lại.' : 'An error occurred. Please try again.',
         timestamp: new Date(),
       }]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleQuickAction = async (action: QuickAction) => {
-    setLoading(true);
-
-    const userMessage: Message = {
-      id: generateId(),
-      role: 'user',
-      content: language === 'vi' ? action.descriptionVi : action.descriptionEn,
-      timestamp: new Date(),
-      action: action.id,
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-
-    try {
-      const response = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: selectedCustomer,
-          action: action.action,
-          payload: { language },
-        }),
-      });
-
-      const data = await response.json();
-
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: data.message || (language === 'vi' ? 'Không có phản hồi.' : 'No response.'),
-        timestamp: new Date(),
-        action: action.id,
-      }]);
-    } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: language === 'vi' ? 'Đã xảy ra lỗi.' : 'An error occurred.',
-        timestamp: new Date(),
-      }]);
-    } finally {
-      setLoading(false);
+      inputRef.current?.focus();
     }
   };
 
   const clearChat = () => {
-    const welcomeMsg = language === 'vi' 
-      ? `Đã xóa cuộc trò chuyện! Bạn có thể bắt đầu mới.`
-      : `Chat cleared! You can start fresh.`;
+    setDetectedCustomer(null);
+    const welcomeMsg = isVietnamese
+      ? `Đã xóa cuộc trò chuyện! Bắt đầu mới thôi. 👋`
+      : `Chat cleared! Starting fresh. 👋`;
 
     setMessages([{
       id: generateId(),
@@ -208,145 +158,185 @@ I can help you with:
     }]);
   };
 
+  // Quick suggestion chips
+  const suggestions = isVietnamese
+    ? [
+        'Tóm tắt khách hàng Tran Thi B',
+        'Phân tích rủi ro Bui Thi K',
+        'Gợi ý sản phẩm cho SME',
+        'Tạo kịch bản gọi cho khách VIP',
+      ]
+    : [
+        'Summarize customer Tran Thi B',
+        'Analyze risk for Bui Thi K',
+        'Suggest products for SME',
+        'Generate call script for VIP customer',
+      ];
+
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
+    <div className="h-[calc(100vh-8rem)] flex flex-col bg-slate-50 dark:bg-slate-900">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('assistant.title')}</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-slate-500 text-sm">{language === 'vi' ? 'Nhận gợi ý từ AI' : 'Get AI-powered insights'}</p>
-            <Badge variant={aiMode === 'openai' ? 'success' : 'warning'} className="text-xs">
-              {aiMode === 'openai' ? '🤖 GPT-4' : '📋 AI'}
-            </Badge>
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-sky-600 rounded-full flex items-center justify-center">
+              <Bot className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white">RM Copilot</h1>
+              <p className="text-sm text-slate-500">
+                {isVietnamese ? 'Trợ lý AI thông minh' : 'Smart AI Assistant'}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-            value={selectedCustomer}
-            onChange={(e) => setSelectedCustomer(e.target.value)}
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <Button variant="outline" size="sm" onClick={clearChat}>
-            <Trash2 className="w-4 h-4 mr-1" />
-            {language === 'vi' ? 'Xóa' : 'Clear'}
-          </Button>
+          
+          <div className="flex items-center gap-3">
+            {detectedCustomer && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900 rounded-full">
+                <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                  {detectedCustomer.name}
+                </span>
+                <button
+                  onClick={() => setDetectedCustomer(null)}
+                  className="ml-1 hover:bg-emerald-200 dark:hover:bg-emerald-800 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                </button>
+              </div>
+            )}
+            <button
+              onClick={clearChat}
+              className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            >
+              {isVietnamese ? 'Xóa' : 'Clear'}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 flex gap-6 min-h-0">
-        {/* Quick Actions Sidebar */}
-        <Card className="w-72 flex-shrink-0 hidden lg:flex flex-col">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">{t('assistant.quickActions')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 overflow-y-auto flex-1">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <Button
-                  key={action.id}
-                  variant="outline"
-                  className="w-full justify-start h-auto py-2"
-                  onClick={() => handleQuickAction(action)}
-                  disabled={loading}
-                >
-                  <Icon className="w-4 h-4 mr-2 flex-shrink-0" />
-                  <div className="text-left">
-                    <div className="font-medium text-xs">{language === 'vi' ? action.labelVi : action.labelEn}</div>
-                    <div className="text-xs text-slate-500">{language === 'vi' ? action.descriptionVi : action.descriptionEn}</div>
-                  </div>
-                </Button>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        {/* Chat Area */}
-        <Card className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-xl p-4 ${
-                  message.role === 'user' 
-                    ? 'bg-sky-500 text-white' 
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
-                }`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    {message.role === 'assistant' && <Bot className="w-4 h-4 text-sky-500" />}
-                    <span className="text-xs opacity-70">
-                      {message.role === 'assistant' ? 'AI' : (language === 'vi' ? 'Bạn' : 'You')}
-                    </span>
-                    {message.action && (
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        message.role === 'assistant' ? 'bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300' : 'bg-white/20'
-                      }`}>
-                        {quickActions.find(a => a.id === message.action)?.labelVi || message.action}
-                      </span>
-                    )}
-                  </div>
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.content}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                    <Bot className="w-4 h-4 animate-pulse" />
-                    <span className="text-sm">{language === 'vi' ? 'Đang xử lý...' : 'Processing...'}</span>
-                  </div>
-                </div>
+      {/* Chat Messages - Messenger Style */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {messages.map((message) => (
+          <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {/* Avatar for assistant */}
+            {message.role === 'assistant' && (
+              <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-sky-600 rounded-full flex items-center justify-center flex-shrink-0 mr-2">
+                <Bot className="w-5 h-5 text-white" />
               </div>
             )}
-            <div ref={messagesEndRef} />
+            
+            {/* Message Bubble */}
+            <div className={`max-w-[75%] ${message.role === 'user' ? 'order-1' : ''}`}>
+              {/* Customer tag */}
+              {message.detectedCustomer && (
+                <div className="flex items-center gap-1 mb-1 text-xs text-emerald-600 dark:text-emerald-400">
+                  <User className="w-3 h-3" />
+                  <span>{message.detectedCustomer.name}</span>
+                </div>
+              )}
+              
+              {/* Intent tag */}
+              {message.intent && (
+                <div className="inline-block px-2 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs text-slate-500 mb-1">
+                  {message.intent.replace(/_/g, ' ')}
+                </div>
+              )}
+              
+              {/* Bubble */}
+              <div className={`rounded-2xl px-4 py-3 whitespace-pre-wrap leading-relaxed text-sm ${
+                message.role === 'user'
+                  ? 'bg-sky-500 text-white rounded-br-md'
+                  : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-md shadow-sm border border-slate-200 dark:border-slate-700'
+              }`}>
+                {message.content}
+              </div>
+              
+              {/* Timestamp */}
+              <div className={`text-xs text-slate-400 mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'} px-1`}>
+                {message.timestamp.toLocaleTimeString(isVietnamese ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            
+            {/* Avatar for user */}
+            {message.role === 'user' && (
+              <div className="w-8 h-8 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0 ml-2">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {isVietnamese ? 'B' : 'Y'}
+                </span>
+              </div>
+            )}
           </div>
+        ))}
 
-          {/* Input */}
-          <div className="border-t border-slate-200 dark:border-slate-700 p-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder={t('assistant.placeholder')}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                disabled={loading}
-                className="flex-1"
-              />
-              <Button onClick={handleSend} disabled={loading || !input.trim()}>
-                <Send className="w-4 h-4" />
-              </Button>
+        {/* Loading indicator */}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-sky-600 rounded-full flex items-center justify-center flex-shrink-0 mr-2">
+              <Bot className="w-5 h-5 text-white" />
             </div>
-            
-            {/* Mobile Quick Actions */}
-            <div className="flex gap-2 mt-3 lg:hidden overflow-x-auto pb-2">
-              {quickActions.slice(0, 4).map((action) => {
-                const Icon = action.icon;
-                return (
-                  <button
-                    key={action.id}
-                    onClick={() => handleQuickAction(action)}
-                    disabled={loading}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-full text-xs whitespace-nowrap hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
-                  >
-                    <Icon className="w-3 h-3" />
-                    {language === 'vi' ? action.labelVi : action.labelEn}
-                  </button>
-                );
-              })}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl rounded-bl-md shadow-sm border border-slate-200 dark:border-slate-700 px-4 py-3">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-sky-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 bg-sky-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 bg-sky-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
             </div>
-            
-            <p className="text-xs text-slate-400 mt-2">
-              💡 {t('assistant.rmDecision')}
-            </p>
           </div>
-        </Card>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Suggestions - Only show when no messages or just welcome */}
+      {messages.length <= 1 && (
+        <div className="px-4 pb-2">
+          <p className="text-xs text-slate-400 mb-2">{isVietnamese ? 'Gợi ý:' : 'Suggestions:'}</p>
+          <div className="flex flex-wrap gap-2">
+            {suggestions.map((suggestion, idx) => (
+              <button
+                key={idx}
+                onClick={() => { setInput(suggestion); inputRef.current?.focus(); }}
+                className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 p-4">
+        <div className="flex items-center gap-3 max-w-4xl mx-auto">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={isVietnamese ? 'Nhắn tin hỏi về khách hàng...' : 'Ask about any customer...'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            disabled={loading}
+            className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-700 rounded-full text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
+          />
+          <button
+            onClick={handleSend}
+            disabled={loading || !input.trim()}
+            className="w-12 h-12 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 text-white rounded-full flex items-center justify-center transition-colors disabled:cursor-not-allowed"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        </div>
+        
+        {/* Customer list hint */}
+        <div className="max-w-4xl mx-auto mt-2">
+          <p className="text-xs text-slate-400 text-center">
+            💡 {isVietnamese 
+              ? 'Tự động nhận diện khách hàng từ tên trong câu hỏi. VD: "Tóm tắt Tran Thi B"'
+              : 'Auto-detect customer from name. E.g.: "Summarize Tran Thi B"'
+            }
+          </p>
+        </div>
       </div>
     </div>
   );
