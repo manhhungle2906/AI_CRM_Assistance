@@ -96,6 +96,7 @@ export async function POST(request: Request) {
         // Build context from customer data
         let contextInfo = '';
         if (customer) {
+          const riskLevel = customer.creditRiskScore > 70 ? 'High' : customer.creditRiskScore > 40 ? 'Medium' : 'Low';
           contextInfo = `
 Customer Information:
 - Name: ${customer.name}
@@ -106,7 +107,7 @@ Customer Information:
 - Digital Score: ${customer.digitalAdoptionScore}/100
 - Region: ${customer.region}
 - Last Interaction: ${customer.lastInteractionDate}
-- Risk Level: ${customer.riskLevel || 'N/A'}
+- Risk Level: ${riskLevel}
 `;
         }
 
