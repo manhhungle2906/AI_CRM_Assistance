@@ -9,14 +9,13 @@ import { FloatingChat } from '@/components/floating-chat/FloatingChat';
 import { useFloatingChat } from '@/lib/floating-chat-context';
 
 function FloatingChatWrapper() {
-  const { isOpen, closeChat, toggleChat, contextInfo } = useFloatingChat();
+  const { isOpen, closeChat, toggleChat } = useFloatingChat();
   
   return (
     <FloatingChat
       isOpen={isOpen}
       onToggle={toggleChat}
       onClose={closeChat}
-      contextInfo={contextInfo || undefined}
     />
   );
 }
