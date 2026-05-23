@@ -1,11 +1,49 @@
 import { NextResponse } from 'next/server';
 import { handleAssistantAction } from '@/lib/assistant-engine';
 import type { AssistantAction } from '@/lib/types';
+import { mockCustomers } from '@/data/mock-customers';
+
+// Intelligent customer detection from query
+function detectCustomerFromQuery(query: string): string | null {
+  const lowerQuery = query.toLowerCase();
+  
+  // Search through all customers to find a match
+  for (const customer of mockCustomers) {
+    const nameLower = customer.name.toLowerCase();
+    const nameParts = customer.name.split(' ');
+    
+    // Check full name
+    if (nameLower.includes(lowerQuery) || lowerQuery.includes(nameLower)) {
+      return customer.id;
+    }
+    
+    // Check individual name parts (first name, last name)
+    for (const part of nameParts) {
+      if (part.length > 2 && lowerQuery.includes(part.toLowerCase())) {
+        return customer.id;
+      }
+    }
+    
+    // Check customer ID format
+    if (lowerQuery.includes(customer.id)) {
+      return customer.id;
+    }
+    
+    // Check segment/micro-segment keywords
+    if (lowerQuery.includes('khách hàng') || lowerQuery.includes('customer')) {
+      if (lowerQuery.includes(customer.name.toLowerCase())) {
+        return customer.id;
+      }
+    }
+  }
+  
+  return null;
+}
 
 // Intelligent chat handler that analyzes user query
 async function handleChat(query: string, customerId: string, language: string = 'vi') {
   const lowerQuery = query.toLowerCase();
-  const customer = await import('@/data/mock-customers').then(m => m.getCustomerById(customerId));
+  const customer = customerId ? await import('@/data/mock-customers').then(m => m.getCustomerById(customerId)) : null;
   
   // Analyze query to determine action
   if (lowerQuery.includes('tóm tắt') || lowerQuery.includes('summarize') || lowerQuery.includes('brief') || lowerQuery.includes('thông tin')) {
@@ -64,16 +102,26 @@ async function handleChat(query: string, customerId: string, language: string = 
   }
   
   return { message: language === 'vi' 
-    ? 'Xin lỗi, tôi không tìm thấy khách hàng này. Vui lòng chọn một khách hàng hợp lệ.'
-    : 'Sorry, I could not find this customer. Please select a valid customer.'
+    ? 'Xin lỗi, tôi không tìm thấy khách hàng này. Vui lòng chọn một khách hàng hoặc nhập tên khách hàng trong câu hỏi.'
+    : 'Sorry, I could not find this customer. Please select a customer or mention their name in your question.'
   };
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { customerId, action, payload } = body;
+    let { customerId, action, payload } = body;
     const language = payload?.language || 'vi';
+    const query = payload?.query || '';
+
+    // If no customerId provided but query contains customer name, try to detect
+    if (!customerId && query) {
+      const detectedCustomerId = detectCustomerFromQuery(query);
+      if (detectedCustomerId) {
+        customerId = detectedCustomerId;
+        payload = { ...payload, detectedCustomer: true };
+      }
+    }
 
     if (!customerId) {
       return NextResponse.json({ error: 'Customer ID required' }, { status: 400 });
@@ -143,7 +191,7 @@ ${language === 'vi' ? '- Respond in Vietnamese with Vietnamese punctuation' : '-
               },
               {
                 role: 'user',
-                content: `Context:\n${contextInfo}\n\nUser Question: ${payload?.query || 'Hello, what can you help me with?'}`
+                content: `Context:\n${contextInfo}\n\nUser Question: ${query || 'Hello, what can you help me with?'}`
               }
             ],
             max_tokens: 2000,
@@ -155,7 +203,8 @@ ${language === 'vi' ? '- Respond in Vietnamese with Vietnamese punctuation' : '-
           const data = await response.json();
           return NextResponse.json({
             message: data.choices[0]?.message?.content || 'No response from AI',
-            source: 'openai'
+            source: 'openai',
+            detectedCustomer: payload?.detectedCustomer
           });
         }
       } catch (openaiError) {
@@ -165,8 +214,8 @@ ${language === 'vi' ? '- Respond in Vietnamese with Vietnamese punctuation' : '-
     
     // Fallback to intelligent mock handler
     if (action === 'chat' || action === 'general_chat') {
-      const result = await handleChat(payload?.query || '', customerId, language);
-      return NextResponse.json({ ...result, source: 'ai' });
+      const result = await handleChat(query, customerId, language);
+      return NextResponse.json({ ...result, source: 'ai', detectedCustomer: payload?.detectedCustomer });
     }
 
     // Handle other actions through the engine
