@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { Bot, Send, X, Minimize2, MessageSquare, Phone, Shield, Zap } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Bot, Send, X, Minimize2, MessageSquare, Phone, Shield, Zap, Calendar, Mail, BarChart3, Sparkles } from 'lucide-react';
 import { useLanguage } from '@/lib/language-context';
 
 interface Message {
@@ -9,7 +9,11 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  detectedCustomer?: { id: string; name: string };
+  intent?: string;
+  intentLabel?: string;
+  customerId?: string;
+  customerName?: string;
+  suggestedActions?: Array<{ label: string; action: string }>;
 }
 
 interface FloatingChatProps {
@@ -18,19 +22,40 @@ interface FloatingChatProps {
   onClose: () => void;
 }
 
+// Storage keys
+const STORAGE_KEY = 'rm_copilot_floating_conversations';
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
 export function FloatingChat({ isOpen, onToggle, onClose }: FloatingChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [detectedCustomer, setDetectedCustomer] = useState<{ id: string; name: string } | null>(null);
+  const [conversationId, setConversationId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { language } = useLanguage();
 
   const isVi = language === 'vi';
 
+  // Load conversation from storage
   useEffect(() => {
     if (isOpen && messages.length === 0) {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const data = JSON.parse(saved);
+        setConversationId(data.id);
+        setMessages(data.messages.map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp)
+        })));
+        return;
+      }
+      
+      // Welcome message
       const welcomeMsg = isVi
         ? `Xin chào! 👋
 
@@ -39,9 +64,9 @@ Tôi là **RM Copilot** - Trợ lý AI của OceanBank.
 Chỉ cần nhắn tin hỏi về khách hàng, tôi sẽ tự nhận diện!
 
 Ví dụ:
-• "Tóm tắt Tran Thi B"
-• "Kịch bản gọi Bui Thi K"
-• "Phân tích rủi ro Minh An"`
+• "tóm tắt khách này"
+• "khách này nên bán gì"
+• "phân tích rủi ro"`
         : `Hello! 👋
 
 I'm **RM Copilot** - OceanBank's AI assistant.
@@ -49,28 +74,42 @@ I'm **RM Copilot** - OceanBank's AI assistant.
 Just chat about customers, I'll auto-detect!
 
 Examples:
-• "Summarize Tran Thi B"
-• "Call script for Bui Thi K"
-• "Analyze risk for Minh An"`;
-      
+• "summarize this customer"
+• "what to sell this customer"
+• "analyze risk"`;
+
       setMessages([{
-        id: '1',
+        id: generateId(),
         role: 'assistant',
         content: welcomeMsg,
         timestamp: new Date(),
       }]);
     }
-  }, [isOpen, language, messages.length]);
+  }, [isOpen, isVi, messages.length]);
 
+  // Save conversation
+  const saveConversation = useCallback((msgs: Message[], convId: string) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      id: convId,
+      messages: msgs.map(m => ({
+        ...m,
+        timestamp: m.timestamp.toISOString()
+      })),
+      updatedAt: new Date().toISOString()
+    }));
+  }, []);
+
+  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Send message
   const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMessage: Message = {
-      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      id: generateId(),
       role: 'user',
       content: input,
       timestamp: new Date(),
@@ -78,50 +117,64 @@ Examples:
 
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
+    const currentConversationId = conversationId || `fconv_${generateId()}`;
+    setConversationId(currentConversationId);
     setInput('');
     setLoading(true);
 
     try {
-      const response = await fetch('/api/assistant', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'chat',
-          payload: { query: currentInput, language },
+          message: currentInput,
+          conversationId: currentConversationId,
+          language,
+          history: messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
         }),
       });
 
       const data = await response.json();
 
-      setMessages(prev => [...prev, {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      const assistantMessage: Message = {
+        id: generateId(),
         role: 'assistant',
-        content: data.message || (isVi ? 'Xin lỗi, tôi không thể xử lý.' : 'Sorry, I cannot process this.'),
+        content: data.response || (isVi ? 'Xin lỗi, tôi không thể xử lý.' : 'Sorry, I cannot process this.'),
         timestamp: new Date(),
-        detectedCustomer: data.detectedCustomer,
-      }]);
+        intent: data.intent,
+        intentLabel: data.intentLabel,
+        customerId: data.customerId,
+        customerName: data.customerName,
+        suggestedActions: data.suggestedActions,
+      };
 
-      if (data.detectedCustomer) {
-        setDetectedCustomer(data.detectedCustomer);
-      }
+      setMessages(prev => {
+        const newMessages = [...prev, assistantMessage];
+        saveConversation(newMessages, currentConversationId);
+        return newMessages;
+      });
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: generateId(),
         role: 'assistant',
         content: isVi ? 'Đã xảy ra lỗi. Vui lòng thử lại.' : 'An error occurred. Please try again.',
         timestamp: new Date(),
       }]);
     } finally {
       setLoading(false);
+      inputRef.current?.focus();
     }
   };
 
+  // Quick actions
   const quickActions = [
-    { id: 'brief', icon: MessageSquare, label: isVi ? 'Tóm tắt' : 'Brief', query: 'Tóm tắt khách hàng này' },
-    { id: 'action', icon: Zap, label: isVi ? 'Hành động' : 'Action', query: 'Gợi ý hành động tiếp theo' },
-    { id: 'call', icon: Phone, label: isVi ? 'Gọi' : 'Call', query: 'Tạo kịch bản gọi' },
-    { id: 'risk', icon: Shield, label: isVi ? 'Rủi ro' : 'Risk', query: 'Phân tích rủi ro' },
+    { id: 'customer_brief', icon: MessageSquare, label: isVi ? 'Tóm tắt' : 'Brief', query: 'tóm tắt khách hàng này' },
+    { id: 'next_best_action', icon: Zap, label: isVi ? 'Hành động' : 'Action', query: 'hành động tiếp theo' },
+    { id: 'product_recommendation', icon: Sparkles, label: isVi ? 'Sản phẩm' : 'Products', query: 'gợi ý sản phẩm' },
+    { id: 'risk_analysis', icon: Shield, label: isVi ? 'Rủi ro' : 'Risk', query: 'phân tích rủi ro' },
+    { id: 'call_script', icon: Phone, label: isVi ? 'Gọi' : 'Call', query: 'tạo kịch bản gọi' },
+    { id: 'create_task', icon: Calendar, label: isVi ? 'Task' : 'Task', query: 'tạo task follow-up' },
   ];
 
   const handleQuickAction = (action: typeof quickActions[0]) => {
@@ -129,16 +182,14 @@ Examples:
     setTimeout(() => handleSend(), 100);
   };
 
+  // Clear chat
   const clearChat = () => {
-    setDetectedCustomer(null);
-    const welcomeMsg = isVi
-      ? `Đã xóa! Bắt đầu cuộc trò chuyện mới. 👋`
-      : `Cleared! Starting fresh. 👋`;
-
+    localStorage.removeItem(STORAGE_KEY);
+    setConversationId('');
     setMessages([{
-      id: `${Date.now()}`,
+      id: generateId(),
       role: 'assistant',
-      content: welcomeMsg,
+      content: isVi ? 'Đã xóa! Bắt đầu mới thôi. 👋' : 'Cleared! Starting fresh. 👋',
       timestamp: new Date(),
     }]);
   };
@@ -163,7 +214,7 @@ Examples:
       style={{ maxWidth: 'calc(100vw - 2rem)' }}
     >
       {/* Header */}
-      <div className="bg-gradient-to-r from-sky-500 to-sky-600 text-white px-4 py-3 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-sky-500 to-sky-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5" />
           {!isMinimized && (
@@ -171,7 +222,7 @@ Examples:
           )}
         </div>
         <div className="flex items-center gap-1">
-          {!isMinimized && detectedCustomer && (
+          {!isMinimized && messages.length > 1 && (
             <button
               onClick={clearChat}
               className="p-1.5 hover:bg-sky-600 rounded-lg transition-colors text-xs"
@@ -197,15 +248,6 @@ Examples:
         </div>
       </div>
 
-      {/* Detected Customer Tag */}
-      {!isMinimized && detectedCustomer && (
-        <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 border-b border-emerald-200 dark:border-emerald-800">
-          <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
-            <span className="font-medium">📌 {detectedCustomer.name}</span>
-          </div>
-        </div>
-      )}
-
       {!isMinimized && (
         <>
           {/* Messages */}
@@ -219,30 +261,49 @@ Examples:
                   </div>
                 )}
                 
-                {/* Bubble */}
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
-                  message.role === 'user'
-                    ? 'bg-sky-500 text-white rounded-br-md order-1'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-md'
-                }`}>
-                  {/* Detected customer tag */}
-                  {message.detectedCustomer && message.role === 'assistant' && (
-                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-1 font-medium">
-                      📌 {message.detectedCustomer.name}
+                {/* Message */}
+                <div className={`max-w-[85%] ${message.role === 'user' ? 'order-1' : ''}`}>
+                  {/* Intent tag */}
+                  {message.intentLabel && message.role === 'assistant' && (
+                    <div className="inline-block px-2 py-0.5 bg-sky-100 dark:bg-sky-900/30 rounded text-xs text-sky-600 dark:text-sky-400 mb-1">
+                      {message.intentLabel}
                     </div>
                   )}
                   
-                  <div className="whitespace-pre-wrap leading-relaxed">
+                  {/* Bubble */}
+                  <div className={`rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
+                    message.role === 'user'
+                      ? 'bg-sky-500 text-white rounded-br-md'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-md'
+                  }`}>
                     {message.content}
                   </div>
                   
+                  {/* Suggested Actions */}
+                  {message.suggestedActions && message.suggestedActions.length > 0 && message.role === 'assistant' && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {message.suggestedActions.slice(0, 3).map((action, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setInput(action.label);
+                            inputRef.current?.focus();
+                          }}
+                          className="px-2 py-1 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded text-xs text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 transition-colors"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  
                   {/* Timestamp */}
-                  <div className={`text-xs mt-1 ${message.role === 'user' ? 'text-sky-100' : 'text-slate-400'}`}>
+                  <div className={`text-xs text-slate-400 mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
                     {message.timestamp.toLocaleTimeString(isVi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 
-                {/* User avatar */}
+                {/* User Avatar */}
                 {message.role === 'user' && (
                   <div className="w-8 h-8 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0 ml-2">
                     <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -272,8 +333,8 @@ Examples:
           </div>
 
           {/* Quick Actions */}
-          <div className="px-4 pb-2">
-            <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="px-4 pb-2 flex-shrink-0">
+            <div className="flex gap-1.5 overflow-x-auto pb-2">
               {quickActions.map((action) => {
                 const Icon = action.icon;
                 return (
@@ -281,9 +342,9 @@ Examples:
                     key={action.id}
                     onClick={() => handleQuickAction(action)}
                     disabled={loading}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs whitespace-nowrap hover:bg-sky-100 dark:hover:bg-sky-900 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs whitespace-nowrap hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-50 transition-colors"
                   >
-                    <Icon className="w-3.5 h-3.5 text-sky-500" />
+                    <Icon className="w-3 h-3 text-sky-500" />
                     {action.label}
                   </button>
                 );
@@ -292,16 +353,17 @@ Examples:
           </div>
 
           {/* Input */}
-          <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+          <div className="border-t border-slate-200 dark:border-slate-700 p-3 flex-shrink-0">
             <div className="flex gap-2">
               <input
+                ref={inputRef}
                 type="text"
                 placeholder={isVi ? 'Hỏi về khách hàng...' : 'Ask about customers...'}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 disabled={loading}
-                className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-full text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
+                className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-full text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
               />
               <button
                 onClick={handleSend}

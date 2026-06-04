@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, Filter, Users, ArrowRight, TrendingUp, AlertTriangle, Clock, CheckCircle } from 'lucide-react';
+import { Search, Filter, Users, ArrowRight, TrendingUp, AlertTriangle, Clock, CheckCircle, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -216,6 +216,22 @@ export default function Customer360Page() {
                     <p className="text-sm text-slate-600">{customer.productCount}</p>
                     <p className="text-xs text-slate-500">Products</p>
                   </div>
+                  
+                  {/* Take Action Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Save customer to localStorage for AI Assistant
+                      localStorage.setItem('rm_copilot_selected_customer_v2', customer.id);
+                      // Navigate to AI Assistant
+                      router.push('/assistant');
+                    }}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Take Action
+                  </button>
+                  
                   <ArrowRight className="w-5 h-5 text-slate-400" />
                 </div>
 
@@ -227,6 +243,17 @@ export default function Customer360Page() {
                   <Badge variant={customer.churnRiskScore >= 50 ? 'danger' : 'success'}>
                     Risk: {customer.churnRiskScore}
                   </Badge>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      localStorage.setItem('rm_copilot_selected_customer_v2', customer.id);
+                      router.push('/assistant');
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded text-xs font-medium"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    AI
+                  </button>
                 </div>
               </div>
             </div>

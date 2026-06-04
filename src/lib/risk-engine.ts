@@ -68,7 +68,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // Cash flow drop
   if (customer.transactionTrend3M < -15) {
     signals.push({
-      id: 'ew_cashflow',
+      id: `ew_cashflow_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'Cash Flow Drop',
@@ -82,7 +82,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // Overdue loan (simulated from churn risk)
   if (customer.creditRiskScore > 50 && customer.products.some(p => p.toLowerCase().includes('loan'))) {
     signals.push({
-      id: 'ew_overdue',
+      id: `ew_overdue_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'Overdue Loan',
@@ -96,7 +96,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // International transaction anomaly
   if (customer.internationalTransactionCount > 50) {
     signals.push({
-      id: 'ew_intl_anomaly',
+      id: `ew_intl_anomaly_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'International Anomaly',
@@ -110,7 +110,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // High value transfer (simulated from balance)
   if (customer.averageBalance > 5000000000) {
     signals.push({
-      id: 'ew_high_value',
+      id: `ew_high_value_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'High Value Transfer',
@@ -124,7 +124,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // Complaint related to failed transaction
   if (customer.complaintStatus === 'Open') {
     signals.push({
-      id: 'ew_complaint',
+      id: `ew_complaint_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'Complaint Related',
@@ -138,7 +138,7 @@ export function detectEarlyWarningSignals(customerId: string): EarlyWarningSigna
   // High credit risk with new loan request
   if (customer.creditRiskScore > 45 && customer.products.some(p => p.toLowerCase().includes('loan'))) {
     signals.push({
-      id: 'ew_credit_risk',
+      id: `ew_credit_risk_${customerId}`,
       customerId,
       customerName: customer.name,
       signalType: 'Credit Risk High',

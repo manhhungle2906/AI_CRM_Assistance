@@ -104,26 +104,42 @@ export default function CustomerDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          href="/customer-360"
-          className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-slate-600" />
-        </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-900">{customer.name}</h1>
-            <Badge variant="default">{customer.segment}</Badge>
-            <Badge variant="outline">{customer.microSegment}</Badge>
-            {customer.complaintStatus !== 'None' && (
-              <Badge variant="danger">{customer.complaintStatus} Complaint</Badge>
-            )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/customer-360"
+            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-900">{customer.name}</h1>
+              <Badge variant="default">{customer.segment}</Badge>
+              <Badge variant="outline">{customer.microSegment}</Badge>
+              {customer.complaintStatus !== 'None' && (
+                <Badge variant="danger">{customer.complaintStatus} Complaint</Badge>
+              )}
+            </div>
+            <p className="text-slate-500 mt-1">
+              {customer.industry || 'Banking Customer'} • {customer.region}
+            </p>
           </div>
-          <p className="text-slate-500 mt-1">
-            {customer.industry || 'Banking Customer'} • {customer.region}
-          </p>
         </div>
+        
+        {/* Take Action Button */}
+        <button
+          onClick={() => {
+            // Save customer to localStorage for AI Assistant
+            localStorage.setItem('rm_copilot_selected_customer_v2', customer.id);
+            // Navigate to AI Assistant
+            window.location.href = '/assistant';
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-colors shadow-sm"
+        >
+          <MessageSquare className="w-5 h-5" />
+          Take Action
+        </button>
       </div>
 
       {/* Quick Stats */}
@@ -542,7 +558,7 @@ export default function CustomerDetailPage() {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Link href={`/assistant?customer=${customer.id}`}>
+              <Link href={`/assistant?customerId=${customer.id}`}>
                 <Button variant="outline" className="w-full justify-start">
                   <Bot className="w-4 h-4 mr-2" />
                   Ask AI Assistant
